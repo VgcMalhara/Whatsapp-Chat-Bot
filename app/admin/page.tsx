@@ -1,44 +1,21 @@
 "use client";
 import { useEffect, useState } from "react";
 
-// 1. Define Interfaces for your data structure
-interface OrderItem {
-  id: string;
-  quantity: number;
-  product: {
-    name: string;
-  };
-}
-
-interface Order {
-  id: string;
-  totalAmount: string;
-  status: string;
-  createdAt: string;
-  user: {
-    name: string;
-    phoneNumber: string;
-    address: string;
-  };
-  items: OrderItem[];
-}
-
 export default function AdminDashboard() {
-  // 2. Explicitly type the state
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({ total: 0, count: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/webhook")
+    fetch("/api/webhook") 
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch data");
         return res.json();
       })
-      .then((data: Order[]) => { // 3. Cast the response data
+      .then((data) => {
         if (Array.isArray(data)) {
           setOrders(data);
-          const total = data.reduce((acc, curr) => acc + parseFloat(curr.totalAmount), 0);
+          const total = data.reduce((acc: number, curr: any) => acc + parseFloat(curr.totalAmount), 0);
           setStats({ total, count: data.length });
         }
         setLoading(false);
@@ -70,6 +47,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
+        {/* Analytics Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
             <p className="text-sm font-medium text-gray-400 uppercase tracking-wider">Total Sales</p>
@@ -81,6 +59,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Orders Table with Delivery Info */}
         <div className="bg-white rounded-2xl shadow-md overflow-hidden border border-gray-200">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -100,7 +79,7 @@ export default function AdminDashboard() {
                     <td colSpan={6} className="p-12 text-center text-gray-400 italic">No delivery records found.</td>
                   </tr>
                 ) : (
-                  orders.map((order) => (
+                  orders.map((order: any) => (
                     <tr key={order.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="p-4 font-mono text-xs text-gray-400">#{order.id}</td>
                       <td className="p-4">
@@ -114,7 +93,7 @@ export default function AdminDashboard() {
                       </td>
                       <td className="p-4">
                         <div className="space-y-1">
-                          {order.items?.map((it) => (
+                          {order.items?.map((it: any) => (
                             <div key={it.id} className="text-[11px] font-bold text-gray-600 uppercase flex items-center">
                               <span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
                               {it.product?.name} <span className="ml-1 text-blue-500">(x{it.quantity})</span>

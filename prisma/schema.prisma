@@ -1,0 +1,48 @@
+// This is your database schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  orders      OrderItem[]
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  phoneNumber  String   @unique
+  name         String?
+  address      String?  // <--- Add this
+  lastState    String   @default("IDLE")
+  tempData     String?  // <--- Add this (to store the JSON string)
+  orders       Order[]
+}
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  user        User        @relation(fields: [userId], references: [id])
+  totalAmount Decimal     @db.Decimal(10, 2)
+  status      String      @default("PENDING") // PENDING, CONFIRMED, SHIPPED
+  createdAt   DateTime    @default(now())
+  items       OrderItem[]
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  quantity  Int
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+}
