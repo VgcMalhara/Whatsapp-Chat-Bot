@@ -1,25 +1,14 @@
-"use client";
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 export const dynamic = 'force-dynamic';
 const prisma = new PrismaClient();
 
-// 1. Define the interface for your temporary state data
-interface TempData {
-  productId?: number;
-  productName?: string;
-  price?: number;
-  quantity?: number;
-  name?: string;
-  address?: string;
-  total?: number;
-}
-
 // --- 1. ADMIN & VERIFICATION (GET) ---
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   
+  // Webhook Verification (Meta)
   const mode = searchParams.get("hub.mode");
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
@@ -28,6 +17,8 @@ export async function GET(request: Request) {
     return new NextResponse(challenge, { status: 200 });
   }
 
+  // Admin Dashboard එකට දත්ත ලබා දීම
+  // Browser එකෙන් හෝ Admin UI එකෙන් එන Request එකක් නම්:
   try {
     const orders = await prisma.order.findMany({
       include: {
@@ -40,8 +31,6 @@ export async function GET(request: Request) {
     });
     return NextResponse.json(orders);
   } catch (error) {
-    // Fixed: Log the error and remove unused variable warning
-    console.error("Admin Fetch Error:", error);
     return NextResponse.json({ error: "Forbidden or Error" }, { status: 403 });
   }
 }
@@ -63,6 +52,7 @@ export async function POST(request: Request) {
     const msgText = message.text.body.trim();
     console.log(`📩 Message from ${customerPhone}: "${msgText}"`);
 
+    // USER & STATE LOADING
     const user = await prisma.user.upsert({
       where: { phoneNumber: customerPhone },
       update: {},
@@ -71,9 +61,7 @@ export async function POST(request: Request) {
 
     let reply = "";
     let nextState = user.lastState;
-    
-    // 2. Safely parse tempData using our Interface
-    let tempData: TempData = JSON.parse((user.tempData as string) || "{}");
+    let tempData = JSON.parse((user as any).tempData || "{}");
 
     // FLOW LOGIC
     switch (user.lastState) {
@@ -99,7 +87,7 @@ export async function POST(request: Request) {
         if (product) {
           tempData.productId = product.id;
           tempData.productName = product.name;
-          tempData.price = Number(product.price);
+          tempData.price = product.price;
           reply = `ඔබ තෝරාගත්තේ: ${product.name}\nමිල: Rs. ${product.price}\n\nතහවුරු කිරීමට 'YES' එවන්න.`;
           nextState = "AWAITING_PRODUCT_CONFIRMATION";
         } else {
@@ -131,7 +119,7 @@ export async function POST(request: Request) {
 
       case "AWAITING_ADDRESS":
         tempData.address = msgText;
-        tempData.total = (tempData.price || 0) * (tempData.quantity || 1);
+        tempData.total = parseFloat(tempData.price) * (tempData.quantity || 1);
         reply = `විස්තර පරීක්ෂා කරන්න:\n📦 Item: ${tempData.productName}\n🔢 Qty: ${tempData.quantity}\n💰 Total: Rs. ${tempData.total}\n👤 Name: ${tempData.name}\n📍 Address: ${tempData.address}\n\nසියල්ල නිවැරදි නම් 'CONFIRM' එවන්න.`;
         nextState = "AWAITING_FINAL_CONFIRMATION";
         break;
@@ -139,22 +127,17 @@ export async function POST(request: Request) {
       case "AWAITING_FINAL_CONFIRMATION":
         if (msgText.toUpperCase() === "CONFIRM") {
           await prisma.$transaction(async (tx) => {
-            if (!tempData.productId || !tempData.total) return;
-            
             await tx.order.create({
               data: {
                 userId: user.id,
-                totalAmount: tempData.total.toString(),
+                totalAmount: tempData.total,
                 status: "CONFIRMED",
-                items: { create: { productId: tempData.productId, quantity: tempData.quantity || 1 } }
+                items: { create: { productId: tempData.productId, quantity: tempData.quantity } }
               }
             });
             await tx.user.update({
               where: { id: user.id },
-              data: { 
-                name: tempData.name || "", 
-                address: tempData.address || "" 
-              }
+              data: { name: tempData.name, address: tempData.address } as any
             });
           });
           reply = "සාර්ථකයි! ✅ ඔබේ ඇණවුම ලැබුණා.";
@@ -169,19 +152,15 @@ export async function POST(request: Request) {
     // UPDATE STATE & DB
     await prisma.user.update({
       where: { id: user.id },
-      data: { 
-        lastState: nextState, 
-        tempData: JSON.stringify(tempData) 
-      }
+      data: { lastState: nextState, tempData: JSON.stringify(tempData) } as any
     });
 
     await sendWhatsAppMessage(customerPhone, reply);
     return NextResponse.json({ status: "success" });
 
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error("❌ ERROR:", errorMessage);
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  } catch (error: any) {
+    console.error("❌ ERROR:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
@@ -206,6 +185,8 @@ async function sendWhatsAppMessage(to: string, text: string) {
     if (!response.ok) {
       const errorData = await response.json();
       console.error("❌ Meta API Error:", JSON.stringify(errorData, null, 2));
+    } else {
+      console.log("📤 Reply sent successfully!");
     }
   } catch (err) {
     console.error("❌ Fetch Error:", err);
